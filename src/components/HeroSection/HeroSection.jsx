@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { collection, onSnapshot, query, orderBy } from "firebase/firestore";
 import { db } from "../../../firebase";
 import { ArrowLeft, Truck, ShieldCheck } from "lucide-react";
+import { Link } from "react-router-dom";
 
 const AUTOPLAY_DELAY = 4000;
 
@@ -147,13 +148,19 @@ export default function HeroSection() {
                     className="anim-fade-up mt-4 flex items-center gap-3"
                     style={{ animationDelay: "0.3s" }}
                   >
-                    <button className="flex items-center gap-2 h-11 px-6 rounded-full bg-primary text-customBg font-bold text-[14px] transition-transform duration-200 hover:opacity-90 hover:-translate-y-0.5 active:scale-95">
-                      اطلب الآن
+                    <Link
+                      to="/products"
+                      className="flex items-center gap-2 h-11 px-6 rounded-full bg-primary text-customBg font-bold text-[14px] transition-transform duration-200 hover:opacity-90 hover:-translate-y-0.5 active:scale-95"
+                    >
+                      اشتري الآن
                       <ArrowLeft size={16} />
-                    </button>
-                    <button className="h-11 px-5 rounded-full border border-secondary/50 text-darkText font-medium text-[14px] transition-transform duration-200 hover:bg-secondary/10 hover:-translate-y-0.5 active:scale-95">
+                    </Link>
+                    <Link
+                      to="/products?category=offers"
+                      className="inline-flex items-center h-11 px-5 rounded-full border border-secondary/50 text-darkText font-medium text-[14px] transition-transform duration-200 hover:bg-secondary/10 hover:-translate-y-0.5 active:scale-95"
+                    >
                       كل العروض
-                    </button>
+                    </Link>
                   </div>
 
                   <div
