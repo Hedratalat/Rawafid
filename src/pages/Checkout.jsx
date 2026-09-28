@@ -936,7 +936,7 @@ export default function Checkout() {
                               applyPromoCode();
                             }
                           }}
-                          placeholder="عندك كود خصم؟"
+                          placeholder="كود الخصم "
                           className={`flex-1 border rounded-xl px-4 py-2.5 text-base bg-customBg text-darkText outline-none transition focus:ring-2 ${
                             promoStatus === "invalid"
                               ? "border-red-500 focus:ring-red-500/30"
