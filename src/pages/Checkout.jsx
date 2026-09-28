@@ -3,7 +3,13 @@ import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Link } from "react-router-dom";
-import { addDoc, collection, serverTimestamp } from "firebase/firestore";
+import {
+  addDoc,
+  collection,
+  serverTimestamp,
+  doc,
+  getDoc,
+} from "firebase/firestore";
 import { db } from "../../firebase";
 import {
   User,
@@ -301,6 +307,10 @@ export default function Checkout() {
   const { items: catalog, loading: catalogLoading } = useCatalog();
   const [placedOrder, setPlacedOrder] = useState(null);
   const [submitError, setSubmitError] = useState("");
+  const [promoInput, setPromoInput] = useState("");
+  const [appliedPromo, setAppliedPromo] = useState(null);
+  const [promoStatus, setPromoStatus] = useState("idle");
+  const [promoError, setPromoError] = useState("");
 
   const {
     register,
@@ -338,7 +348,44 @@ export default function Checkout() {
 
   const total = cartItems.reduce((sum, item) => sum + item.total, 0);
   const shippingCost = selectedCity ? shippingFees[selectedCity] || 0 : 0;
-  const grandTotal = total + shippingCost;
+  const discountAmount = appliedPromo
+    ? Math.round((total * appliedPromo.discountPercent) / 100)
+    : 0;
+  const grandTotal = total + shippingCost - discountAmount;
+
+  const applyPromoCode = async () => {
+    const trimmed = promoInput.trim();
+    if (!trimmed) return;
+
+    setPromoStatus("checking");
+    setPromoError("");
+
+    try {
+      const snap = await getDoc(doc(db, "PromoCodes", trimmed));
+      if (!snap.exists() || snap.data().active === false) {
+        setAppliedPromo(null);
+        setPromoStatus("invalid");
+        setPromoError("الكود غير صحيح");
+        return;
+      }
+      setAppliedPromo({
+        code: trimmed,
+        discountPercent: snap.data().discountPercent,
+      });
+      setPromoStatus("valid");
+    } catch {
+      setAppliedPromo(null);
+      setPromoStatus("invalid");
+      setPromoError("حصل خطأ، حاول تاني");
+    }
+  };
+
+  const removePromoCode = () => {
+    setAppliedPromo(null);
+    setPromoInput("");
+    setPromoStatus("idle");
+    setPromoError("");
+  };
 
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -384,6 +431,9 @@ export default function Checkout() {
         })),
         subtotal: total,
         shippingFee: shippingCost,
+        promoCode: appliedPromo?.code || null,
+        discountPercent: appliedPromo?.discountPercent || 0,
+        discountAmount,
         grandTotal,
         status: "pending",
         createdAt: serverTimestamp(),
@@ -490,14 +540,24 @@ export default function Checkout() {
                 <span className="absolute top-0 -right-3 w-6 h-6 rounded-full bg-customBg" />
                 <span className="absolute top-0 -left-3 w-6 h-6 rounded-full bg-customBg" />
               </div>
-
               <div className="px-6 pb-6 text-center">
                 <p className="text-sm text-darkText/60 mb-1">إجمالي المبلغ</p>
+                {placedOrder.discountAmount > 0 && (
+                  <p className="text-base text-darkText/40 line-through mb-0.5">
+                    {placedOrder.subtotal + placedOrder.shippingFee} ج.م
+                  </p>
+                )}
                 <p className="font-heading text-4xl font-bold text-accent">
                   {placedOrder.grandTotal} ج.م
                 </p>
+                {placedOrder.discountAmount > 0 && (
+                  <p className="text-sm text-green-600 font-semibold mt-1">
+                    استفدت بخصم {placedOrder.discountPercent}% (
+                    {placedOrder.discountAmount} ج.م) بالكود{" "}
+                    {placedOrder.promoCode}
+                  </p>
+                )}
               </div>
-
               <div className="mx-6 mb-6 flex items-start gap-3 bg-accent/10 border border-accent/20 rounded-2xl p-4">
                 <MessageCircle
                   size={22}
@@ -534,7 +594,6 @@ export default function Checkout() {
       </>
     );
   }
-  /* ================= السلة فاضية ================= */
   if (cart.length === 0) {
     return (
       <>
@@ -577,9 +636,9 @@ export default function Checkout() {
         <div className="max-w-6xl mx-auto px-4 sm:px-6">
           <div className="mb-8 md:mb-10 text-center">
             <p className="text-sm font-bold text-accent mb-2">خطوة أخيرة</p>
-            <h1 className="font-heading text-3xl sm:text-4xl font-bold text-primary">
+            <h2 className="font-heading text-3xl sm:text-4xl font-bold text-primary">
               أكمل طلبك
-            </h1>
+            </h2>
           </div>
 
           {catalogLoading ? (
@@ -859,6 +918,63 @@ export default function Checkout() {
                     ))}
                   </ul>
 
+                  {/* كود الخصم */}
+                  <div className="mb-5">
+                    {!appliedPromo ? (
+                      <div className="flex gap-2">
+                        <input
+                          value={promoInput}
+                          onChange={(e) => {
+                            setPromoInput(e.target.value);
+                            setPromoStatus("idle");
+                            setPromoError("");
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              applyPromoCode();
+                            }
+                          }}
+                          placeholder="عندك كود خصم؟"
+                          className={`flex-1 border rounded-xl px-4 py-2.5 text-base bg-customBg text-darkText outline-none transition focus:ring-2 ${
+                            promoStatus === "invalid"
+                              ? "border-red-500 focus:ring-red-500/30"
+                              : "border-secondary/40 focus:ring-accent/30 focus:border-accent"
+                          }`}
+                        />
+                        <button
+                          type="button"
+                          onClick={applyPromoCode}
+                          disabled={
+                            promoStatus === "checking" || !promoInput.trim()
+                          }
+                          className="shrink-0 px-5 rounded-xl bg-secondary/15 hover:bg-secondary/25 text-primary text-sm font-bold transition disabled:opacity-50"
+                        >
+                          {promoStatus === "checking" ? "..." : "تفعيل"}
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-between gap-3 bg-accent/10 border border-accent/25 rounded-xl px-4 py-2.5">
+                        <span className="text-sm font-bold text-primary">
+                          ✓ {appliedPromo.code} — خصم{" "}
+                          {appliedPromo.discountPercent}%
+                        </span>
+                        <button
+                          type="button"
+                          onClick={removePromoCode}
+                          className="text-xs font-bold text-red-500 hover:text-red-700 transition"
+                        >
+                          إلغاء
+                        </button>
+                      </div>
+                    )}
+                    {promoError && (
+                      <p className="text-red-600 text-xs mt-1.5">
+                        {promoError}
+                      </p>
+                    )}
+                  </div>
                   <div className="border-t border-secondary/30 pt-4 space-y-3">
                     <div className="flex justify-between text-base text-darkText/70">
                       <span>الإجمالي الفرعي</span>
@@ -866,6 +982,14 @@ export default function Checkout() {
                         {total} ج.م
                       </span>
                     </div>
+                    {appliedPromo && (
+                      <div className="flex justify-between text-base text-green-600">
+                        <span>الخصم ({appliedPromo.discountPercent}%)</span>
+                        <span className="font-bold">
+                          - {discountAmount} ج.م
+                        </span>
+                      </div>
+                    )}
                     <div className="flex justify-between text-base text-darkText/70">
                       <span>الشحن</span>
                       <span className="font-bold text-primary">

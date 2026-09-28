@@ -118,7 +118,7 @@ export default function Footer() {
               onClick={() => {
                 window.scrollTo({ top: 0, behavior: "smooth" });
               }}
-              className="md:hidden flex items-center shrink-0"
+              className="flex items-center shrink-0"
             >
               <img
                 src="/logo.png"
@@ -126,7 +126,7 @@ export default function Footer() {
                 className="h-9 w-auto brightness-0 invert"
               />
             </Link>
-            <p className="text-base leading-8 text-customBg/70 max-w-sm">
+            <p className="text-base leading-8 text-customBg max-w-sm">
               متجر روافد، منتجات مختارة بعناية وبجودة تستحق ثقتكم، توصلكم لحد
               باب البيت.
             </p>
@@ -154,7 +154,7 @@ export default function Footer() {
                 <li key={link.label}>
                   <a
                     href={link.href}
-                    className="text-base text-customBg/80 hover:text-accent transition-colors"
+                    className="text-base text-customBg hover:text-accent transition-colors"
                   >
                     {link.label}
                   </a>
@@ -178,12 +178,12 @@ export default function Footer() {
                     <a
                       href={href}
                       dir={dir}
-                      className="text-base text-customBg/80 hover:text-accent transition-colors"
+                      className="text-base text-customBg hover:text-accent transition-colors"
                     >
                       {text}
                     </a>
                   ) : (
-                    <span className="text-base text-customBg/80">{text}</span>
+                    <span className="text-base text-customBg">{text}</span>
                   )}
                 </li>
               ))}
@@ -191,7 +191,10 @@ export default function Footer() {
           </div>
         </div>
 
-        <div className="mt-10 pt-6 border-t border-secondary/30 flex flex-col-reverse sm:flex-row items-center justify-between gap-2 text-sm text-customBg/60">
+        <div
+          className="mt-10 pt-6 border-t border-secondary/30 flex flex-col-reverse sm:flex-row items-center justify-between gap-2 text-sm
+         text-customBg"
+        >
           جميع الحقوق محفوظة، روافد {new Date().getFullYear()} ©
           <p>صُنع بحب في مصر</p>
         </div>

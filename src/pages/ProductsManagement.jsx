@@ -9,6 +9,7 @@ import {
   query,
   orderBy,
   serverTimestamp,
+  setDoc,
 } from "firebase/firestore";
 import { db } from "../../firebase";
 import {
@@ -24,9 +25,11 @@ import {
   Star,
   ChevronRight,
   ChevronLeft,
+  Tag,
 } from "lucide-react";
 
 const COLLECTION_NAME = "Products";
+const PROMO_COLLECTION_NAME = "PromoCodes";
 const PRODUCTS_PER_PAGE = 8;
 
 const EMPTY_FORM = {
@@ -45,13 +48,16 @@ const EMPTY_FORM = {
 export default function ProductsManagement() {
   const [products, setProducts] = useState([]);
   const [form, setForm] = useState(EMPTY_FORM);
-  const [editingId, setEditingId] = useState(null); // لو null يبقى وضع "إضافة"
-  const [deleteTarget, setDeleteTarget] = useState(null); // المنتج المطلوب حذفه (للـ modal)
+  const [editingId, setEditingId] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [toast, setToast] = useState(null); // { message: string }
+  const [toast, setToast] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
+  const [promoCodes, setPromoCodes] = useState([]);
+  const [promoCode, setPromoCode] = useState("");
+  const [promoDiscount, setPromoDiscount] = useState("");
+  const [promoLoading, setPromoLoading] = useState(true);
 
-  // إظهار التوست ثم إخفاؤه تلقائيًا بعد 3 ثواني
   function showToast(message) {
     setToast({ message, key: Date.now() });
   }
@@ -72,7 +78,19 @@ export default function ProductsManagement() {
     return () => unsub();
   }, []);
 
-  // ===== Pagination =====
+  useEffect(() => {
+    const q = query(
+      collection(db, PROMO_COLLECTION_NAME),
+      orderBy("createdAt", "desc"),
+    );
+    const unsub = onSnapshot(q, (snapshot) => {
+      setPromoCodes(snapshot.docs.map((d) => ({ id: d.id, ...d.data() })));
+      setPromoLoading(false);
+    });
+    return () => unsub();
+  }, []);
+
+  //  Pagination
   const totalPages = Math.max(
     1,
     Math.ceil(products.length / PRODUCTS_PER_PAGE),
@@ -225,6 +243,37 @@ export default function ProductsManagement() {
     }
   }
 
+  async function handleAddPromoCode(e) {
+    e.preventDefault();
+    const trimmedCode = promoCode.trim();
+    const percent = parseFloat(promoDiscount);
+
+    if (!trimmedCode) return;
+    if (!percent || percent <= 0 || percent > 100) return;
+
+    try {
+      await setDoc(doc(db, PROMO_COLLECTION_NAME, trimmedCode), {
+        code: trimmedCode,
+        discountPercent: percent,
+        active: true,
+        createdAt: serverTimestamp(),
+      });
+      showToast("تم إضافة كود الخصم بنجاح");
+      setPromoCode("");
+      setPromoDiscount("");
+    } catch (err) {
+      console.error("Error adding promo code:", err);
+    }
+  }
+
+  async function deletePromoCode(id) {
+    try {
+      await deleteDoc(doc(db, PROMO_COLLECTION_NAME, id));
+      showToast("تم حذف كود الخصم بنجاح");
+    } catch (err) {
+      console.error("Error deleting promo code:", err);
+    }
+  }
   return (
     <div className="max-w-3xl mx-auto" dir="rtl">
       {/* Toast */}
@@ -452,6 +501,87 @@ export default function ProductsManagement() {
         </div>
       </form>
 
+      {/* ===== Promo Codes Section ===== */}
+      <div className="mt-10 mb-10 ">
+        <h2 className="font-heading text-2xl font-bold text-darkText mb-4">
+          أكواد الخصم
+        </h2>
+
+        <form
+          onSubmit={handleAddPromoCode}
+          className="bg-white border border-secondary/30 rounded-2xl p-5 flex flex-col sm:flex-row gap-4 mb-6"
+        >
+          <div className="flex flex-col gap-1.5 flex-1">
+            <label className="text-sm font-medium text-darkText">الكود</label>
+            <input
+              value={promoCode}
+              onChange={(e) => setPromoCode(e.target.value)}
+              placeholder="مثال: SAVE10"
+              className="h-11 rounded-lg border border-secondary/40 px-3 text-sm outline-none
+               focus:border-primary text-darkText"
+            />
+          </div>
+          <div className="flex flex-col gap-1.5 sm:w-48">
+            <label className="text-sm font-medium text-darkText">
+              نسبة الخصم (%)
+            </label>
+            <input
+              value={promoDiscount}
+              onChange={(e) => setPromoDiscount(e.target.value)}
+              type="number"
+              min="1"
+              max="100"
+              placeholder="مثال: 10"
+              className="h-11 rounded-lg border border-secondary/40 px-3 text-sm outline-none focus:border-primary text-darkText"
+            />
+          </div>
+          <div className="flex items-end">
+            <button
+              type="submit"
+              className="h-11 px-6 rounded-full bg-primary text-customBg font-bold text-sm hover:opacity-90 transition whitespace-nowrap"
+            >
+              إضافة الكود
+            </button>
+          </div>
+        </form>
+
+        {promoLoading ? (
+          <p className="text-sm text-darkText/60">جاري التحميل...</p>
+        ) : promoCodes.length === 0 ? (
+          <p className="text-sm text-darkText/60">
+            لا توجد أكواد خصم مضافة بعد.
+          </p>
+        ) : (
+          <div className="flex flex-col gap-3">
+            {promoCodes.map((promo) => (
+              <div
+                key={promo.id}
+                className="flex items-center gap-3 bg-white border border-secondary/30 rounded-xl p-3"
+              >
+                <span className="w-9 h-9 rounded-full flex items-center justify-center bg-primary/10 text-primary shrink-0">
+                  <Tag size={16} />
+                </span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-bold text-darkText">
+                    {promo.code}
+                  </p>
+                  <p className="text-xs text-secondary mt-0.5">
+                    خصم {promo.discountPercent}%
+                  </p>
+                </div>
+                <button
+                  onClick={() => deletePromoCode(promo.id)}
+                  aria-label="حذف الكود"
+                  className="w-9 h-9 rounded-full flex items-center justify-center bg-red-50 text-red-600 hover:bg-red-100 transition shrink-0"
+                >
+                  <Trash2 size={16} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       {/* ليستة المنتجات الحالية */}
       <div className="flex items-center justify-between mb-4">
         <h2 className="font-heading text-xl font-bold text-darkText">
@@ -618,7 +748,6 @@ export default function ProductsManagement() {
               </button>
             </div>
           )}
-          {/* ================================ */}
         </div>
       )}
 
