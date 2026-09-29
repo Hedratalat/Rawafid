@@ -691,17 +691,17 @@ export default function Checkout() {
                 </p>
               </div>
 
-              <div className="px-6 pb-6 flex flex-col sm:flex-row gap-3">
+              <div className="px-4 sm:px-6 pb-6 flex flex-col sm:flex-row gap-3">
                 <Link
                   to="/products"
-                  className="flex-1 inline-flex items-center justify-center gap-2 h-12 rounded-full bg-primary text-customBg font-bold text-sm hover:opacity-90 transition"
+                  className="w-full sm:flex-1 inline-flex items-center justify-center gap-2 min-h-[48px] px-4 py-2 rounded-full bg-primary text-customBg font-bold text-sm sm:text-base text-center whitespace-nowrap hover:opacity-90 transition"
                 >
-                  <ShoppingBag size={18} />
-                  متابعة التسوق
+                  <ShoppingBag size={18} className="shrink-0" />
+                  <span>متابعة التسوق</span>
                 </Link>
                 <Link
                   to="/"
-                  className="flex-1 inline-flex items-center justify-center h-12 rounded-full border border-secondary/50 text-darkText font-medium text-sm hover:bg-secondary/10 transition"
+                  className="w-full sm:flex-1 inline-flex items-center justify-center min-h-[48px] px-4 py-2 rounded-full border border-secondary/50 text-darkText font-medium text-sm sm:text-base text-center whitespace-nowrap hover:bg-secondary/10 transition"
                 >
                   العودة إلى الرئيسية
                 </Link>
