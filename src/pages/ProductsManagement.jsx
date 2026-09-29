@@ -56,6 +56,7 @@ export default function ProductsManagement() {
   const [promoCodes, setPromoCodes] = useState([]);
   const [promoCode, setPromoCode] = useState("");
   const [promoDiscount, setPromoDiscount] = useState("");
+  const [promoType, setPromoType] = useState("general");
   const [promoLoading, setPromoLoading] = useState(true);
 
   function showToast(message) {
@@ -255,12 +256,14 @@ export default function ProductsManagement() {
       await setDoc(doc(db, PROMO_COLLECTION_NAME, trimmedCode), {
         code: trimmedCode,
         discountPercent: percent,
+        type: promoType, // "general" أو "firstOrder"
         active: true,
         createdAt: serverTimestamp(),
       });
       showToast("تم إضافة كود الخصم بنجاح");
       setPromoCode("");
       setPromoDiscount("");
+      setPromoType("general");
     } catch (err) {
       console.error("Error adding promo code:", err);
     }
@@ -319,7 +322,6 @@ export default function ProductsManagement() {
             className="h-11 rounded-lg border border-secondary/40 px-3 text-sm outline-none focus:border-primary text-darkText"
           />
         </div>
-
         <div className="flex flex-col gap-1.5">
           <label className="text-sm font-medium text-darkText">
             تصنيف المنتج
@@ -333,7 +335,6 @@ export default function ProductsManagement() {
             className="h-11 rounded-lg border border-secondary/40 px-3 text-sm outline-none focus:border-primary text-darkText"
           />
         </div>
-
         <div className="flex flex-col gap-1.5">
           <label className="text-sm font-medium text-darkText">الوصف</label>
           <textarea
@@ -346,7 +347,6 @@ export default function ProductsManagement() {
             className="rounded-lg border border-secondary/40 px-3 py-2 text-sm outline-none focus:border-primary text-darkText resize-none"
           />
         </div>
-
         <div className="flex flex-col gap-1.5">
           <label className="text-sm font-medium text-darkText">
             رابط الصورة الرئيسية
@@ -360,7 +360,6 @@ export default function ProductsManagement() {
             className="h-11 rounded-lg border border-secondary/40 px-3 text-sm outline-none focus:border-primary text-darkText"
           />
         </div>
-
         {/* ===== صور التفاصيل ===== */}
         <div className="flex flex-col gap-2">
           <div className="flex items-center justify-between">
@@ -407,7 +406,6 @@ export default function ProductsManagement() {
           )}
         </div>
         {/* ========================= */}
-
         <div className="grid grid-cols-2 gap-4">
           <div className="flex flex-col gap-1.5">
             <label className="text-sm font-medium text-darkText">
@@ -467,7 +465,6 @@ export default function ProductsManagement() {
           </label>
         </div>
         {/* ===================================================== */}
-
         <div className="flex flex-col gap-1.5">
           <label className="text-sm font-medium text-darkText">
             ترتيب الظهور (اختياري)
@@ -481,7 +478,6 @@ export default function ProductsManagement() {
             className="h-11 rounded-lg border border-secondary/40 px-3 text-sm outline-none focus:border-primary text-darkText"
           />
         </div>
-
         <div className="flex items-center gap-3 mt-2">
           <button
             type="submit"
@@ -535,6 +531,20 @@ export default function ProductsManagement() {
               className="h-11 rounded-lg border border-secondary/40 px-3 text-sm outline-none focus:border-primary text-darkText"
             />
           </div>
+          <div className="flex flex-col gap-1.5 sm:w-44">
+            <label className="text-sm font-medium text-darkText">
+              نوع الكود
+            </label>
+            <select
+              value={promoType}
+              onChange={(e) => setPromoType(e.target.value)}
+              className="h-11 rounded-lg border border-secondary/40 px-3 text-sm outline-none focus:border-primary text-darkText bg-white"
+            >
+              <option value="general">عام (أي وقت)</option>
+              <option value="firstOrder">لأول طلب فقط</option>
+            </select>
+          </div>
+
           <div className="flex items-end">
             <button
               type="submit"
@@ -562,8 +572,17 @@ export default function ProductsManagement() {
                   <Tag size={16} />
                 </span>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-bold text-darkText">
+                  <p className="text-sm font-bold text-darkText flex items-center gap-2">
                     {promo.code}
+                    <span
+                      className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${
+                        promo.type === "firstOrder"
+                          ? "bg-accent/10 text-accent"
+                          : "bg-primary/10 text-primary"
+                      }`}
+                    >
+                      {promo.type === "firstOrder" ? "لأول طلب" : "عام"}
+                    </span>
                   </p>
                   <p className="text-xs text-secondary mt-0.5">
                     خصم {promo.discountPercent}%

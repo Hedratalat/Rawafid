@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -9,6 +9,7 @@ import {
   serverTimestamp,
   doc,
   getDoc,
+  setDoc,
 } from "firebase/firestore";
 import { db } from "../../firebase";
 import {
@@ -218,7 +219,6 @@ const PAYMENT_ACCOUNTS = {
 
 const GUEST_KEY = "guestIdRawafid";
 
-// معرّف ثابت للعميل على نفس المتصفح (بيتعمل مرة واحدة وبيتحفظ مع كل طلباته)
 function getGuestId() {
   const fallback = () =>
     `guest-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
@@ -234,6 +234,55 @@ function getGuestId() {
   }
 }
 
+const PHONE_RE = /^01[0125][0-9]{8}$/;
+
+// توحيد الكتابة العربية: شيل التشكيل والمسافات والرموز، وحدّ الألف والتاء المربوطة والياء
+const normalizeText = (str = "") =>
+  str
+    .toLowerCase()
+    .replace(/[\u064B-\u065F\u0640]/g, "")
+    .replace(/[أإآ]/g, "ا")
+    .replace(/ة/g, "ه")
+    .replace(/ى/g, "ي")
+    .replace(/[^a-z0-9\u0600-\u06FF]/g, "");
+
+// هاش بسيط عشان نعمل ID قصير للعنوان
+function hashString(str) {
+  let h1 = 5381;
+  let h2 = 7919;
+  for (let i = 0; i < str.length; i++) {
+    const c = str.charCodeAt(i);
+    h1 = ((h1 << 5) + h1) ^ c;
+    h2 = ((h2 << 7) - h2 + c) | 0;
+  }
+  return (h1 >>> 0).toString(36) + (h2 >>> 0).toString(36);
+}
+
+const makeAddressKey = (city, area, address) =>
+  hashString(`${city}|${normalizeText(area)}|${normalizeText(address)}`);
+
+// بيفحص: هل العميل قديم (تليفون أو واتساب أو guestId)؟ وهل العنوان اتسجل قبل كده؟
+async function lookupCustomer({ phone, whatsapp, guestId, addressKey }) {
+  const idKeys = [
+    ...new Set(
+      [
+        PHONE_RE.test(phone || "") && `phone_${phone}`,
+        PHONE_RE.test(whatsapp || "") && `phone_${whatsapp}`,
+        guestId && `guest_${guestId}`,
+      ].filter(Boolean),
+    ),
+  ];
+
+  const [idSnaps, addrSnap] = await Promise.all([
+    Promise.all(idKeys.map((k) => getDoc(doc(db, "Customers", k)))),
+    addressKey ? getDoc(doc(db, "Customers", `addr_${addressKey}`)) : null,
+  ]);
+
+  return {
+    isReturning: idSnaps.some((s) => s.exists()),
+    addressExists: !!addrSnap?.exists(),
+  };
+}
 const inputClass = (hasError) =>
   `w-full border rounded-xl px-4 py-2.5 text-base bg-customBg text-darkText outline-none transition focus:ring-2 ${
     hasError
@@ -316,6 +365,7 @@ export default function Checkout() {
     register,
     handleSubmit,
     watch,
+    getValues,
     formState: { errors, isSubmitting },
   } = useForm({
     resolver: zodResolver(checkoutSchema),
@@ -368,15 +418,18 @@ export default function Checkout() {
         setPromoError("الكود غير صحيح");
         return;
       }
+
+      const promoData = snap.data();
       setAppliedPromo({
         code: trimmed,
-        discountPercent: snap.data().discountPercent,
+        discountPercent: promoData.discountPercent,
+        type: promoData.type || "general",
       });
       setPromoStatus("valid");
     } catch {
       setAppliedPromo(null);
       setPromoStatus("invalid");
-      setPromoError("حصل خطأ، حاول تاني");
+      setPromoError("حدث خطأ، يرجى المحاولة مرة أخرى");
     }
   };
 
@@ -390,19 +443,62 @@ export default function Checkout() {
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }, []);
+  const submitErrorRef = useRef(null);
+
+  useEffect(() => {
+    if (submitError && submitErrorRef.current) {
+      submitErrorRef.current.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+    }
+  }, [submitError]);
 
   const onSubmit = async (data) => {
     if (cartItems.length === 0) return;
     setSubmitError("");
 
     try {
+      const guestId = getGuestId();
+      const addressKey = makeAddressKey(data.city, data.area, data.address);
+
+      let lookup = null;
+      try {
+        lookup = await lookupCustomer({
+          phone: data.phone,
+          whatsapp: data.whatsapp,
+          guestId,
+          addressKey,
+        });
+      } catch (err) {
+        console.error("Customer lookup failed:", err);
+      }
+
+      // فحص إجباري لكود أول طلب (العميل ممكن يكون غيّر الرقم بعد التفعيل)
+      if (appliedPromo?.type === "firstOrder") {
+        if (!lookup) {
+          setSubmitError("تعذّر التحقق من كود الخصم، يرجى المحاولة مرة أخرى.");
+          return;
+        }
+        if (lookup.isReturning) {
+          setAppliedPromo(null);
+          setPromoInput("");
+          setPromoStatus("idle");
+          setPromoError("");
+          setSubmitError(
+            "تم إلغاء كود الخصم لأنه مخصص للطلب الأول فقط. يرجى مراجعة طلبك والمبلغ الإجمالي، ثم تأكيد الطلب.",
+          );
+          return;
+        }
+      }
+
       const paymentMethodForDB =
         data.paymentMethod === "vodafone"
           ? "vodafone cash"
           : data.paymentMethod;
 
       const orderData = {
-        guestId: getGuestId(),
+        guestId,
         fullName: data.fullName,
         phone: data.phone,
         whatsapp: data.whatsapp,
@@ -411,6 +507,10 @@ export default function Checkout() {
         area: data.area,
         address: data.address,
         floor: data.floor || "",
+        addressKey,
+        // تحذير للأدمن: نفس العنوان اتسجل قبل كده لعميل مختلف (مش بيأثر على الخصم)
+        duplicateAddress:
+          !!lookup && !lookup.isReturning && lookup.addressExists,
         paymentMethod: paymentMethodForDB,
         ...(data.paymentMethod === "instapay" && {
           referenceNumber: data.referenceNumber,
@@ -422,7 +522,7 @@ export default function Checkout() {
         }),
         items: cartItems.map((item) => ({
           productId: item.id,
-          type: item.type, // "product" أو "offer"
+          type: item.type,
           name: item.name,
           image: item.image || "",
           price: item.price,
@@ -432,6 +532,7 @@ export default function Checkout() {
         subtotal: total,
         shippingFee: shippingCost,
         promoCode: appliedPromo?.code || null,
+        promoType: appliedPromo?.type || null,
         discountPercent: appliedPromo?.discountPercent || 0,
         discountAmount,
         grandTotal,
@@ -442,12 +543,30 @@ export default function Checkout() {
 
       await addDoc(collection(db, "Orders"), orderData);
 
+      // تسجيل العميل في Customers (لو الدوك موجود الـ Rules هترفض، وده طبيعي فبنتجاهله)
+      const customerKeys = [
+        ...new Set([
+          `phone_${data.phone}`,
+          `phone_${data.whatsapp}`,
+          `guest_${guestId}`,
+          `addr_${addressKey}`,
+        ]),
+      ];
+      await Promise.allSettled(
+        customerKeys.map((k) =>
+          setDoc(doc(db, "Customers", k), {
+            hasOrdered: true,
+            createdAt: serverTimestamp(),
+          }),
+        ),
+      );
+
       clearCart();
       setPlacedOrder(orderData);
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (error) {
       console.error("Error saving order:", error);
-      setSubmitError("حصل خطأ أثناء تنفيذ الطلب، حاول تاني");
+      setSubmitError("حدث خطأ أثناء تنفيذ الطلب، يرجى المحاولة مرة أخرى.");
     }
   };
 
@@ -505,8 +624,8 @@ export default function Checkout() {
                 تم تأكيد طلبك
               </h2>
               <p className="relative text-customBg/80">
-                شكرًا لك، {placedOrder.fullName.split(" ")[0]} تم استلام طلبك
-                وجاري تجهيزه.
+                شكرًا لك، {placedOrder.fullName.split(" ")[0]}. تم استلام طلبك
+                وهو قيد التجهيز.
               </p>
             </div>
 
@@ -552,7 +671,7 @@ export default function Checkout() {
                 </p>
                 {placedOrder.discountAmount > 0 && (
                   <p className="text-sm text-green-600 font-semibold mt-1">
-                    استفدت بخصم {placedOrder.discountPercent}% (
+                    تم تطبيق خصم {placedOrder.discountPercent}% (
                     {placedOrder.discountAmount} ج.م) بالكود{" "}
                     {placedOrder.promoCode}
                   </p>
@@ -564,7 +683,7 @@ export default function Checkout() {
                   className="text-accent shrink-0 mt-0.5"
                 />
                 <p className="text-sm text-darkText/70 leading-6">
-                  هنتواصل معاك على الواتساب (
+                  سنتواصل معك عبر واتساب (
                   <bdi className="font-bold text-primary">
                     {placedOrder.whatsapp}
                   </bdi>
@@ -578,13 +697,13 @@ export default function Checkout() {
                   className="flex-1 inline-flex items-center justify-center gap-2 h-12 rounded-full bg-primary text-customBg font-bold text-sm hover:opacity-90 transition"
                 >
                   <ShoppingBag size={18} />
-                  تابع التسوق
+                  متابعة التسوق
                 </Link>
                 <Link
                   to="/"
                   className="flex-1 inline-flex items-center justify-center h-12 rounded-full border border-secondary/50 text-darkText font-medium text-sm hover:bg-secondary/10 transition"
                 >
-                  الرجوع للرئيسية
+                  العودة إلى الرئيسية
                 </Link>
               </div>
             </div>
@@ -610,7 +729,7 @@ export default function Checkout() {
               السلة فارغة
             </h2>
             <p className="text-base text-darkText/60 max-w-xs">
-              أضف منتجات للسلة الأول عشان تقدر تكمل الطلب.
+              أضف منتجات إلى السلة أولًا لتتمكن من إكمال الطلب.
             </p>
             <Link
               to="/products"
@@ -1007,11 +1126,13 @@ export default function Checkout() {
                   </div>
 
                   {submitError && (
-                    <p className="mt-4 text-base text-red-600 bg-red-50 border border-red-200 rounded-xl px-4 py-2.5">
+                    <p
+                      ref={submitErrorRef}
+                      className="mt-4 text-base text-red-600 bg-red-50 border border-red-200 rounded-xl px-4 py-2.5"
+                    >
                       {submitError}
                     </p>
                   )}
-
                   <button
                     type="submit"
                     disabled={isSubmitting || cartItems.length === 0}

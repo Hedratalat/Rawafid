@@ -18,6 +18,8 @@ import {
   Home,
   CheckCircle2,
   Fingerprint,
+  AlertTriangle,
+  Tag,
 } from "lucide-react";
 import {
   collection,
@@ -505,6 +507,12 @@ export default function OrderDash() {
                       <p className="text-sm text-darkText/50 mt-1 truncate">
                         {order.orderNumber}
                       </p>
+                      {order.duplicateAddress && (
+                        <span className="inline-flex items-center gap-1.5 mt-2 text-xs font-bold text-amber-700 bg-amber-100 border border-amber-300 px-2.5 py-1 rounded-full">
+                          <AlertTriangle size={13} />
+                          عنوان مكرر: مستخدم سابقًا من عميل آخر
+                        </span>
+                      )}
                     </div>
 
                     <button
@@ -705,6 +713,16 @@ export default function OrderDash() {
                       <span>الشحن</span>
                       <span>{order.shippingFee?.toFixed(2)} ج.م</span>
                     </div>
+                    {order.discountAmount > 0 && (
+                      <div className="flex items-center justify-between text-green-700">
+                        <span className="flex items-center gap-1.5">
+                          <Tag size={14} />
+                          خصم {order.discountPercent}% ({order.promoCode})
+                          {order.promoType === "firstOrder" && " - أول طلب"}
+                        </span>
+                        <span>- {order.discountAmount?.toFixed(2)} ج.م</span>
+                      </div>
+                    )}
                   </div>
 
                   {/* الإجمالي + الحالة */}
